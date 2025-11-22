@@ -108,53 +108,35 @@ def run_analysis():
             # Récupération des données fondamentales
             info = stock.info
             pe = info.get('trailingPE')
-            roe = info.get('returnOnEquity', 0) 
+            # Ne pas utiliser de valeur par défaut ici, car 'None' est plus clair que 0 pour le filtre
+            roe = info.get('returnOnEquity') 
 
-            # --- FILTRE STRICT : P/E < 15 ET ROE > 15% ---
+            # --- FILTRE STRICT : P/E < 15 ---
             
             # Étape 1 : Vérification stricte du P/E (Prix)
-            # Doit être un nombre (non None), positif, et surtout, strictement inférieur à 15.
+            # Doit être disponible, strictement positif, et STRICTEMENT inférieur à 15.
             if pe is None or pe <= 0 or pe >= 15:
-                continue # On passe au prochain ticker si le P/E ne convient pas.
+                continue # P/E non conforme, on passe au suivant.
                 
+            # --- FILTRE STRICT : ROE > 15% ---
+
             # Étape 2 : Vérification stricte du ROE (Qualité)
-            # Doit être strictement supérieur à 15% (0.15)
-            if roe > 0.15: 
-                # L'action passe le double test (Prix ET Qualité)
-                name = info.get('longName', ticker)
-                sector = info.get('sector', 'N/A')
-                currency = info.get('currency', 'USD')
-                tag = "Valeur d'Or"
+            # Doit être disponible (non None) et STRICTEMENT supérieur à 0.15 (15%).
+            if roe is None or roe <= 0.15:
+                continue # ROE non conforme, on passe au suivant.
 
-                print(f"💰 VALEUR D'OR TROUVÉE: {ticker} - {name} (P/E: {pe:.2f}, ROE: {roe*100:.2f}%)")
-
-                undervalued_stocks.append({
-                    "symbol": ticker,
-                    "name": name,
-                    "sector": sector,
-                    "pe": round(pe, 2),
-                    "roe": round(roe * 100, 2),
-                    "price": round(price, 2),
-                    "currency": currency,
-                    "tag": tag
-                })
-        
-        except Exception:
-            continue
+            # --- Si le code atteint ce point, les deux conditions sont remplies ---
             
-    # Tri par P/E croissant
-    undervalued_stocks.sort(key=lambda x: x['pe'])
-    
-    final_data = {
-        "last_updated": datetime.datetime.utcnow().strftime("%d/%m/%Y à %H:%M GMT"),
-        "count": len(undervalued_stocks),
-        "data": undervalued_stocks
-    }
+            name = info.get('longName', ticker)
+            sector = info.get('sector', 'N/A')
+            currency = info.get('currency', 'USD')
+            tag = "Valeur d'Or"
 
-    with open("data.json", "w") as f:
-        json.dump(final_data, f)
-    
-    print("--- ANALSE COMPLÈTE. Résultat :", len(undervalued_stocks), "actions trouvées. ---")
+            print(f"💰 VALEUR D'OR TROUVÉE: {ticker} - {name} (P/E: {pe:.2f}, ROE: {roe*100:.2f}%)")
 
-if __name__ == "__main__":
-    run_analysis()
+            undervalued_stocks.append({
+                "symbol": ticker,
+                "name": name,
+                "sector": sector,
+                "pe": round(pe, 2),
+                # Conversion du ROE en
