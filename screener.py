@@ -71,7 +71,7 @@ def get_all_global_tickers():
     """Agrège toutes les listes pour le scan mondial"""
     all_tickers = []
     all_tickers.extend(get_sp500_tickers())
-    all_tickers.extend(get_nasdaq100_tickers()) # Maintenant corrigé pour les points
+    all_tickers.extend(get_nasdaq100_tickers())
     all_tickers.extend(get_cac40_tickers())
     all_tickers.extend(get_dax_tickers())
     all_tickers.extend(get_ftse100_tickers())
@@ -103,22 +103,24 @@ def run_analysis():
             try:
                 price = stock.fast_info.last_price
             except:
-                # Ignore si le prix n'est pas disponible (ticker invalide ou non-listé)
-                continue
+                continue # Skip si le prix n'est pas disponible
 
             # Récupération des données fondamentales
             info = stock.info
             pe = info.get('trailingPE')
             roe = info.get('returnOnEquity', 0) 
 
-            # --- STRATÉGIE DE SÉLECTION STRICTE : QUALITÉ + PRIX BAS ---
+            # --- FILTRE STRICT : P/E < 15 ET ROE > 15% ---
             
-            # P/E doit être disponible, strictement positif et inférieur à 15
-            # ET
-            # ROE doit être supérieur à 15% (0.15)
-            cond_strict_buffett = (pe is not None and 0 < pe < 15 and roe > 0.15)
-            
-            if cond_strict_buffett: 
+            # Étape 1 : Vérification stricte du P/E (Prix)
+            # Doit être un nombre (non None), positif, et surtout, strictement inférieur à 15.
+            if pe is None or pe <= 0 or pe >= 15:
+                continue # On passe au prochain ticker si le P/E ne convient pas.
+                
+            # Étape 2 : Vérification stricte du ROE (Qualité)
+            # Doit être strictement supérieur à 15% (0.15)
+            if roe > 0.15: 
+                # L'action passe le double test (Prix ET Qualité)
                 name = info.get('longName', ticker)
                 sector = info.get('sector', 'N/A')
                 currency = info.get('currency', 'USD')
@@ -138,7 +140,6 @@ def run_analysis():
                 })
         
         except Exception:
-            # Continue si yfinance échoue à récupérer les infos (erreur de connexion, ticker exotique)
             continue
             
     # Tri par P/E croissant
