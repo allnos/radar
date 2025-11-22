@@ -2,39 +2,44 @@ name: Update Stock Data
 
 on:
   schedule:
-    # Se lance tous les jours à minuit
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Permet le lancement manuel
+    - cron: '0 0 * * *' # Minuit tous les jours
+  workflow_dispatch: # Bouton manuel
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # On laisse 30 min au script car le scan mondial est long
+    # On augmente le temps max à 60 min car l'installation des outils peut être longue
+    timeout-minutes: 60
 
     steps:
-    - name: Checkout code
+    - name: Récupération du code
       uses: actions/checkout@v3
 
-    - name: Set up Python
+    - name: Installation Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    - name: Install dependencies
+    - name: Installation des Outils (Critique)
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        # On installe tout directement ici pour être sûr que rien ne manque
+        pip install yfinance pandas lxml html5lib requests beautifulsoup4
 
-    - name: Run Global Buffett Screener
+    - name: Lancement du Screener
       run: |
-        # ATTENTION : Vérifiez ici que le nom correspond EXACTEMENT à votre fichier Python
-        # Si votre fichier s'appelle screener.py, laissez screener.py
-        # Si votre fichier s'appelle global_buffett_screener.py, changez la ligne ci-dessous
-        python global_buffett_screener.py
+        # C'EST ICI QUE SE TROUVAIT L'ERREUR
+        # On lance screener.py car c'est votre fichier d'origine
+        python screener.py
 
-    - name: Commit and Push results
+    - name: Sauvegarde des résultats
       run: |
         git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        git add data.json
+        # Le commit ne se fait que s'il y a des changements
+        git commit -m "Mise à jour auto des Valeurs d'Or" || echo "Pas de changement détecté"
+        git push
         git config --global user.email 'action@github.com'
         git add data.json
         git commit -m "Mise à jour des Valeurs d'Or Buffett" || exit 0
