@@ -1,46 +1,43 @@
 name: Update Stock Data
 
 on:
-  schedule:
-    - cron: '0 0 * * *' # Minuit tous les jours
-  workflow_dispatch: # Bouton manuel
+  workflow_dispatch: # Bouton manuel uniquement pour le test
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # On augmente le temps max à 60 min car l'installation des outils peut être longue
-    timeout-minutes: 60
 
     steps:
-    - name: Récupération du code
+    # 1. On récupère vos fichiers
+    - name: Check out repository
       uses: actions/checkout@v3
 
-    - name: Installation Python
+    # 2. On installe Python
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    - name: Installation des Outils (Critique)
+    # 3. On installe yfinance directement (c'est souvent là que ça bloquait)
+    - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        # On installe tout directement ici pour être sûr que rien ne manque
-        pip install yfinance pandas lxml html5lib requests beautifulsoup4
+        pip install yfinance pandas
 
-    - name: Lancement du Screener
+    # 4. On vérifie que le fichier existe avant de le lancer
+    - name: Check file existence
       run: |
-        # C'EST ICI QUE SE TROUVAIT L'ERREUR
-        # On lance screener.py car c'est votre fichier d'origine
+        ls -la
+
+    # 5. On lance le script
+    - name: Run Screener
+      run: |
         python screener.py
 
-    - name: Sauvegarde des résultats
+    # 6. On sauvegarde (seulement si le script a marché)
+    - name: Commit and Push
       run: |
         git config --global user.name 'GitHub Action'
         git config --global user.email 'action@github.com'
         git add data.json
-        # Le commit ne se fait que s'il y a des changements
-        git commit -m "Mise à jour auto des Valeurs d'Or" || echo "Pas de changement détecté"
-        git push
-        git config --global user.email 'action@github.com'
-        git add data.json
-        git commit -m "Mise à jour des Valeurs d'Or Buffett" || exit 0
+        git commit -m "Update data" || echo "No changes to commit"
         git push
