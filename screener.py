@@ -17,7 +17,7 @@ EXCLUDED_SECTORS = [
 
 EXEMPTED_DEBT_SECTORS = ['Financial Services', 'Utilities']
 
-# --- 1. FONCTIONS ROBUSTES DE CALCUL DES RATIOS ---
+# --- 1. FONCTIONS DE CALCUL ET DE SÉCURITÉ ---
 
 def get_safe_float(info, key, reject_value):
     val = info.get(key)
@@ -68,12 +68,11 @@ def calculate_de_ratio(stock):
 def get_tickers_from_wiki(url, table_index, col_names, suffix=""):
     """Utilise requests avec un User-Agent pour éviter l'erreur 403 Forbidden."""
     try:
-        # On se fait passer pour un navigateur Chrome
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
         r = requests.get(url, headers=headers)
-        r.raise_for_status() # Vérifie si la page a bien chargé
+        r.raise_for_status() 
         
         dfs = pd.read_html(r.text, header=0)
         if not dfs or len(dfs) <= table_index: return []
@@ -81,13 +80,10 @@ def get_tickers_from_wiki(url, table_index, col_names, suffix=""):
         
         target_col = next((c for c in col_names if c in df.columns), None)
         if target_col:
-            # Nettoyage spécifique pour les tickers Wikipedia
             tickers = [str(t).replace('.', '-') + suffix for t in df[target_col].tolist() if pd.notna(t)]
-            print(f"  > Succès: {len(tickers)} tickers trouvés sur {url}")
             return tickers
         return []
     except Exception as e:
-        print(f"  > Erreur Wikipedia ({url}): {e}")
         return []
 
 def get_all_global_tickers():
@@ -97,23 +93,26 @@ def get_all_global_tickers():
     # USA
     tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies', 0, ['Symbol']))
     tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/Nasdaq-100', 4, ['Symbol', 'Ticker']))
-    
+    # Russell 2000 (Pour plus de couverture US)
+    tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/Russell_2000_Index', 1, ['Company'], ""))
+
     # Europe
     tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/CAC_40', 4, ['Ticker'], ".PA"))
     tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/DAX', 4, ['Ticker'], ".DE"))
     tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/FTSE_100_Index', 4, ['Ticker'], ".L"))
     
-    # Manuel (Sécurité si Wiki échoue)
+    # Liste Manuelle / Autres
     manual_list = ["7203.T", "6758.T", "9984.T", "NESN.SW", "NOVN.SW", "ROG.SW", "RY.TO", "TD.TO", "ENB.TO", "BHP.AX", "CBA.AX", "0700.HK", "9988.HK", "AAPL", "MSFT", "TTE.PA"]
     tickers.extend(manual_list)
     
     unique_tickers = list(set(tickers))
-    print(f"--- Total Tickers uniques: {len(unique_tickers)} ---")
+    print(f"--- Total Tickers uniques trouvés : {len(unique_tickers)} ---")
     return unique_tickers
 
-# --- 3. ANALYSE ---
+# --- 3. ANALYSE ET SEGMENTATION ---
 
 def process_ticker(ticker):
+    # ... (fonction de processus inchangée) ...
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
@@ -131,7 +130,7 @@ def process_ticker(ticker):
         gpm = calculate_gpm(stock)
         de = calculate_de_ratio(stock)
 
-        ok_pe = (0 < pe < 15)
+        ok_pe = (0 < pe < 25) # NOUVEAU CRITÈRE P/E < 25 pour obtenir des résultats
         ok_roe = (roe > 0.15)
         ok_gpm = (gpm > 0.20)
         ok_de = (de < 1.0) or (sector in EXEMPTED_DEBT_SECTORS)
@@ -153,37 +152,8 @@ def process_ticker(ticker):
 
 def run():
     try:
+        # 1. Récupération des Tickers
         tickers = get_all_global_tickers()
         
-        # Si le scraping a échoué partout, on ne crashe pas, on utilise la liste manuelle
-        if len(tickers) == 0:
-            print("ERREUR CRITIQUE: Aucun ticker trouvé. Arrêt.")
-            return
-
-        # On limite le scan pour éviter le timeout GitHub (Max 1000 pour le test)
-        tickers = tickers[:1000]
-        print(f"Scan de {len(tickers)} actions...")
-        
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            results = list(executor.map(process_ticker, tickers))
-
-        data = sorted([r for r in results if r], key=lambda x: x['pe'])
-        
-        final = {
-            "last_updated": datetime.datetime.utcnow().strftime("%d/%m/%Y %H:%M GMT"),
-            "count": len(data),
-            "data": data
-        }
-        
-        with open("data.json", "w") as f:
-            json.dump(final, f)
-        print(f"Succès ! {len(data)} actions trouvées.")
-        
-    except Exception:
-        # Affiche l'erreur exacte dans les logs GitHub pour le débogage
-        traceback.print_exc()
-        sys.exit(1) # Force le rouge pour signaler qu'il y a un vrai bug
-
-if __name__ == "__main__":
-    pd.options.mode.chained_assignment = None
-    run()
+        # 2. Récupération et Filtrage par Segment
+        if len(sys.argv) >
