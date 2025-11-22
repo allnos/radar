@@ -4,7 +4,17 @@ import json
 import datetime
 import sys
 
-# --- FONCTION UTILITAIRE DE SÉCURITÉ (Inchangée) ---
+# --- BUFFETT FILTERS & CRITERIA ---
+
+# Secteurs typiquement évités par Buffett (trop complexe, trop volatile, trop cyclique)
+EXCLUDED_SECTORS = [
+    'Technology', 'Biotechnology', 'Basic Materials', 'Energy', 
+    'Oil & Gas', 'Mining', 'Semiconductors', 'Aerospace & Defense', 
+    'Capital Goods', 'Industrials' 
+]
+
+
+# --- FONCTION UTILITAIRE DE SÉCURITÉ ---
 def get_safe_float(info, key, reject_value):
     """Récupère une valeur et garantit qu'elle est un float. Sinon, renvoie une valeur de rejet."""
     val = info.get(key)
@@ -16,6 +26,8 @@ def get_safe_float(info, key, reject_value):
         return reject_value
 
 # --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS (Inchangées) ---
+# (Ces fonctions restent inchangées et ne sont pas répétées ici pour la clarté, 
+# mais elles doivent être présentes dans votre fichier final)
 
 def get_sp500_tickers():
     """Récupère le S&P 500 (USA) et corrige le format des tickers pour yfinance."""
@@ -90,10 +102,11 @@ def get_all_global_tickers():
     clean_tickers = list(set(all_tickers))
     return clean_tickers
 
-# --- 2. ANALYSE PRINCIPALE (Critère Strict: P/E < 15 ET ROE > 15%) ---
+
+# --- 2. ANALYSE PRINCIPALE (4 Critères Fondamentaux) ---
 
 def run_analysis():
-    print("--- Démarrage du Screener Mondial (P/E < 15 ET ROE > 15%) ---")
+    print("--- Démarrage du Screener Buffet (4 Critères Fondamentaux + Exclusion de Secteur) ---")
     tickers = get_all_global_tickers()
     
     limit_scan = 1500
@@ -116,27 +129,48 @@ def run_analysis():
 
             info = stock.info
             
-            # Récupération sécurisée : P/E par défaut à une valeur MAX pour s'assurer qu'il est rejeté s'il est manquant
-            pe_val = get_safe_float(info, 'trailingPE', reject_value=9999.0) 
-            # Récupération sécurisée : ROE par défaut à une valeur MIN pour s'assurer qu'il est rejeté s'il est manquant
-            roe_val = get_safe_float(info, 'returnOnEquity', reject_value=-1.0) 
+            # 1. Vérification du Secteur (Critère Qualitatif de Simplicité)
+            sector = info.get('sector', 'N/A')
+            if sector in EXCLUDED_SECTORS:
+                # print(f"DEBUG: {ticker} - Secteur {sector} exclu.")
+                continue
 
-            # --- FILTRES STRICTS (DOUBLE VÉRIFICATION DE PRÉCISION) ---
+            # 2. Récupération des Ratios (Sécurisée)
+            pe_val = get_safe_float(info, 'trailingPE', reject_value=9999.0)
+            roe_val = get_safe_float(info, 'returnOnEquity', reject_value=-1.0)
+            gpm_val = get_safe_float(info, 'grossMargins', reject_value=-1.0)
             
-            # P/E doit être strictement entre 0 et 14.9999 (pour être sûr d'exclure 15.00)
+            # Ratio Dette/Capitaux Propres (D/E)
+            total_debt = get_safe_float(info, 'totalDebt', reject_value=0.0)
+            total_equity = get_safe_float(info, 'totalStockholderEquity', reject_value=-1.0)
+            
+            if total_equity > 0:
+                de_val = total_debt / total_equity
+            else:
+                # Si capitaux propres négatifs ou nuls, le ratio échoue
+                de_val = 9999.0 
+
+            # --- APPLICATION DES FILTRES BUFFETT ---
+            
+            # F1: P/E < 15.0 (Prix)
             is_pe_ok = (0.0 < pe_val < 15.0)
             
-            # ROE doit être strictement supérieur à 0.15
+            # F2: ROE > 15% (Qualité)
             is_roe_ok = (roe_val > 0.15)
             
+            # F3: Marge Brute (GPM) > 20% (Pouvoir de Fixation des Prix / Moat)
+            is_gpm_ok = (gpm_val > 0.20)
+            
+            # F4: Dette/Capitaux Propres (D/E) < 1.0 (Sécurité / Dette gérable)
+            is_de_ok = (de_val < 1.0)
+            
             # Ligne de DÉBOGAGE CRITIQUE : Vérifiez vos logs GitHub Action !
-            print(f"DEBUG: {ticker} - P/E: {pe_val:.4f} (OK: {is_pe_ok}), ROE: {roe_val*100:.4f}% (OK: {is_roe_ok})")
+            # print(f"DEBUG: {ticker} - P/E:{is_pe_ok}, ROE:{is_roe_ok}, GPM:{is_gpm_ok}, D/E:{is_de_ok}")
 
             # --- ENREGISTREMENT FINAL ---
-            if is_pe_ok and is_roe_ok:
+            if is_pe_ok and is_roe_ok and is_gpm_ok and is_de_ok:
                 
                 name = info.get('longName', ticker)
-                sector = info.get('sector', 'N/A')
                 currency = info.get('currency', 'USD')
                 tag = "Valeur d'Or"
 
@@ -148,12 +182,15 @@ def run_analysis():
                     "sector": sector,
                     "pe": round(pe_val, 2),
                     "roe": round(roe_val * 100, 2),
+                    "gpm": round(gpm_val * 100, 2),
+                    "de_ratio": round(de_val, 2),
                     "price": round(price, 2),
                     "currency": currency,
                     "tag": tag
                 })
         
-        except Exception:
+        except Exception as e:
+            # print(f"Erreur pour {ticker}: {e}")
             continue
             
     # Tri par P/E croissant
