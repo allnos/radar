@@ -3,35 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar Boursier : Valeurs Sous-évaluées</title>
+    <title>Radar Boursier : Stratégie Buffett (P/E & ROE)</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; }
-        .update-time { text-align: center; color: #7f8c8d; font-size: 0.9em; margin-bottom: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th { background: #34495e; color: white; padding: 12px; text-align: left; }
-        td { padding: 12px; border-bottom: 1px solid #ddd; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 5px; }
+        .update-time { text-align: center; color: #7f8c8d; font-size: 0.9em; margin-bottom: 25px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { background: #34495e; color: white; padding: 14px; text-align: left; font-size: 1em; }
+        td { padding: 14px; border-bottom: 1px solid #eee; }
         tr:nth-child(even) { background-color: #f9f9f9; }
         tr:hover { background-color: #e8f4f8; }
-        /* Style pour les badges P/E et tag (utilisation de couleurs différentes pour les catégories) */
-        .pe-tag { color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold; display: inline-block; min-width: 40px; text-align: center; }
+        .pe-tag, .roe-tag { padding: 4px 8px; border-radius: 4px; font-weight: bold; color: white; font-size: 0.9em; display: inline-block; }
+        .tag-value { font-size: 0.8em; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: inline-block; }
+
+        /* Couleurs pour le Tag */
+        .tag-sous-évalué { background-color: #27ae60; } /* Vert pour P/E très bas (Critère Graham) */
+        .tag-qualité-prix { background-color: #2980b9; } /* Bleu pour P/E plus haut mais ROE fort (Critère Buffett) */
+        
+        /* Couleurs pour le ROE */
+        .roe-good { background-color: #27ae60; } /* ROE élevé > 15% */
+        .roe-avg { background-color: #f39c12; }  /* ROE entre 0% et 15% */
+        .roe-na { background-color: #95a5a6; } /* ROE indisponible ou 0% */
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🌍 Radar Boursier : Opportunités Monde (Critères Buffett)</h1>
+    <h1>🎯 Radar Boursier : Stratégie Warren Buffett</h1>
     <p class="update-time" id="lastUpdate">Chargement des données...</p>
 
     <table id="stockTable">
         <thead>
             <tr>
-                <th>Symbole</th>
+                <th>Symbole / Type</th>
                 <th>Société</th>
                 <th>Secteur</th>
                 <th>P/E Ratio</th>
-                <th>ROE</th> <th>Prix</th>
+                <th>ROE</th>
+                <th>Prix</th>
             </tr>
         </thead>
         <tbody id="tableBody">
@@ -42,45 +52,49 @@
 <script>
     // Fonction pour charger les données
     fetch('data.json')
-        .then(response => {
-            // Vérifie si le fichier est accessible (important pour le premier lancement)
-            if (!response.ok) {
-                throw new Error('data.json not found or could not be loaded');
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .then(jsonData => {
             document.getElementById('lastUpdate').textContent = "Dernière mise à jour : " + jsonData.last_updated;
             
             const tbody = document.getElementById('tableBody');
             
             if(jsonData.data.length === 0) {
-                tbody.innerHTML = "<tr><td colspan='6' style='text-align:center'>Aucune valeur trouvée selon vos critères aujourd'hui.</td></tr>";
+                tbody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding: 30px;'>Aucune valeur trouvée selon les critères de P/E et ROE aujourd'hui.</td></tr>";
                 return;
             }
 
             jsonData.data.forEach(stock => {
-                // Définition des couleurs des badges selon la catégorie Buffett
-                let badgeColor = stock.tag === "Sous-évalué" ? "#27ae60" : "#2980b9";
                 
+                // 1. GESTION DU TAG (Sous-évalué / Qualité/Prix)
+                const tagClass = stock.tag === "Sous-évalué" ? "tag-sous-évalué" : "tag-qualité-prix";
+                const peColor = stock.tag === "Sous-évalué" ? "#27ae60" : "#2980b9";
+                
+                // 2. GESTION DU ROE (Correction pour éviter "Undefined%")
+                let roeValue;
+                let roeColor;
+
+                if (stock.roe === undefined || stock.roe === null) {
+                    // Si la valeur est complètement absente (ne devrait pas arriver avec le Python corrigé)
+                    roeValue = 'N/A';
+                    roeColor = '#95a5a6';
+                } else if (stock.roe <= 0) {
+                    // Si le ROE est zéro ou négatif (affiche 0.00% si c'est ce que Python a donné)
+                    roeValue = stock.roe.toFixed(2) + '%'; 
+                    roeColor = '#95a5a6';
+                } else if (stock.roe > 15) {
+                    // ROE excellent (Critère Buffett)
+                    roeValue = stock.roe.toFixed(2) + '%';
+                    roeColor = '#27ae60'; // Vert
+                } else {
+                    // ROE faible ou moyen
+                    roeValue = stock.roe.toFixed(2) + '%';
+                    roeColor = '#f39c12'; // Jaune/Orange
+                }
+
+
                 const row = `<tr>
                     <td>
-                        <b>${stock.symbol}</b> <br> 
-                        <span style="font-size:0.8em; color:${badgeColor}">${stock.tag}</span>
+                        <b>${stock.symbol}</b>
+                        <br>
+                        <span class="tag-value ${tagClass}">${stock.tag}</span>
                     </td>
-                    <td>${stock.name}</td>
-                    <td>${stock.sector}</td>
-                    <td><span class="pe-tag" style="background-color:${badgeColor}">${stock.pe}</span></td>
-                    <td>${stock.roe}%</td> <td>${stock.price} ${stock.currency}</td>
-                </tr>`;
-                tbody.innerHTML += row;
-            });
-        })
-        .catch(error => {
-            document.getElementById('lastUpdate').textContent = "En attente de la première mise à jour de minuit ou relance manuelle...";
-            console.log('Erreur de chargement des données. Le fichier data.json n\'existe peut-être pas encore. ', error);
-        });
-</script>
-
-</body>
-</html>
