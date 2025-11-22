@@ -2,7 +2,6 @@ import yfinance as yf
 import pandas as pd
 import json
 import datetime
-import time
 
 # --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS (Scraping Wikipedia) ---
 
@@ -11,7 +10,6 @@ def get_sp500_tickers():
     try:
         print("Récupération S&P 500 (USA)...")
         df = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
-        # Correction du format (ex: BRK.B -> BRK-B)
         return [t.replace('.', '-') for t in df['Symbol'].tolist()]
     except:
         return []
@@ -20,9 +18,9 @@ def get_nasdaq100_tickers():
     """Récupère le NASDAQ 100 (USA)"""
     try:
         print("Récupération NASDAQ 100 (USA)...")
-        # Le tableau est souvent à l'index 4
-        df = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[4] 
-        return df['Ticker'].tolist()
+        df = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[4]
+        col_name = 'Symbol' if 'Symbol' in df.columns else 'Ticker'
+        return df[col_name].tolist()
     except:
         return []
 
@@ -31,7 +29,6 @@ def get_cac40_tickers():
     try:
         print("Récupération CAC 40 (France)...")
         df = pd.read_html('https://en.wikipedia.org/wiki/CAC_40')[4]
-        # Ajout du suffixe .PA pour Yahoo Finance
         return [t + ".PA" for t in df['Ticker'].tolist()]
     except:
         return []
@@ -41,7 +38,6 @@ def get_dax_tickers():
     try:
         print("Récupération DAX (Allemagne)...")
         df = pd.read_html('https://en.wikipedia.org/wiki/DAX')[4]
-        # Ajout du suffixe .DE si manquant
         return [t if ".DE" in t else t + ".DE" for t in df['Ticker'].tolist()]
     except:
         return []
@@ -51,28 +47,20 @@ def get_ftse100_tickers():
     try:
         print("Récupération FTSE 100 (UK)...")
         df = pd.read_html('https://en.wikipedia.org/wiki/FTSE_100_Index')[4]
-        # Ajout du suffixe .L pour Londres
         return [t + ".L" for t in df['Ticker'].tolist()]
     except:
         return []
 
 def get_major_europe_japan_manual():
-    """Liste manuelle des leaders (Japon, Suisse, Italie, etc.)"""
+    """Liste manuelle des leaders pour la couverture des bourses difficiles à scraper"""
     print("Ajout des leaders Japonais, Suisses, Canadiens, etc. (Liste manuelle)...")
     return [
-        # JAPON (Leaders)
         "7203.T", "6758.T", "9984.T", "6861.T", "8306.T", "9432.T", "7974.T", 
-        # SUISSE (SMI Leaders)
         "NESN.SW", "NOVN.SW", "ROG.SW", "UBSG.SW", "ZURN.SW",
-        # ITALIE (FTSE Leaders)
         "FER.MI", "ENI.MI", "ISP.MI", "ENEL.MI", 
-        # ESPAGNE
         "ITX.MC", "IBE.MC",
-        # CANADA
-        "RY.TO", "TD.TO", "ENB.TO", 
-        # CHINE / HK
+        "RY.TO", "TD.TO", "ENB.TO",
         "0700.HK", "9988.HK", "1299.HK",
-        # AUSTRALIE
         "BHP.AX", "CBA.AX", "CSL.AX"
     ]
 
@@ -86,87 +74,59 @@ def get_all_global_tickers():
     all_tickers.extend(get_dax_tickers())
     all_tickers.extend(get_ftse100_tickers())
     all_tickers.extend(get_major_europe_japan_manual())
+
+    # Nettoyage final des formats et suppression des doublons
+    clean_tickers = list(set([t.replace('.', '-') if len(t.split('.')) <= 1 or t.endswith(('.TO', '.AX', '.HK', '.SW', '.MI', '.MC', '.AS')) else t for t in all_tickers]))
     
-    # Nettoyage : on enlève les doublons
-    clean_tickers = list(set(all_tickers))
     return clean_tickers
 
-# --- 2. ANALYSE PRINCIPALE (Critères Warren Buffett) ---
+# --- 2. ANALYSE PRINCIPALE (Critère Strict: P/E < 15 ET ROE > 15%) ---
 
 def run_analysis():
-    print("--- CONSTRUCTION DE LA LISTE MONDIALE ---")
+    print("--- Démarrage du Screener Mondial (P/E < 15 ET ROE > 15%) ---")
     tickers = get_all_global_tickers()
     
-    # Limite de scan fixée à 1500 pour respecter le temps d'exécution (6h max) de GitHub
-    limit_scan = 1500 
-    tickers = tickers[:limit_scan]
-    print(f"Total actions à analyser (limité à {limit_scan}): {len(tickers)}")
+    limit_scan = 1500
+    tickers_to_scan = tickers[:limit_scan]
     
     undervalued_stocks = []
-    print(f"Démarrage du scan sur {len(tickers)} titres...")
-    
-    for i, ticker in enumerate(tickers):
-        # Affichage de la progression pour le débug dans GitHub Actions
+    print(f"Total actions à scanner : {len(tickers_to_scan)}")
+
+    for i, ticker in enumerate(tickers_to_scan):
         if i % 100 == 0:
-            print(f"Progression : {i}/{len(tickers)} - {ticker}")
+            print(f"Progression : {i}/{len(tickers_to_scan)} - {ticker}")
 
         try:
             stock = yf.Ticker(ticker)
-            
-            # Filtre rapide : si pas de prix, l'action est ignorée
+
             try:
                 price = stock.fast_info.last_price
             except:
                 continue
 
-            # Récupération des données lourdes
+            # Récupération des données fondamentales
             info = stock.info
             pe = info.get('trailingPE')
-            roe = info.get('returnOnEquity', 0)
+            # Le ROE est un float (ex: 0.18 pour 18%). On utilise 0 par défaut.
+            roe = info.get('returnOnEquity', 0) 
+
+            # --- STRATÉGIE DE SÉLECTION STRICTE : QUALITÉ + PRIX BAS ---
             
-            # --- STRATÉGIE WARREN BUFFETT ---
-            # Critère 1 : P/E < 15 (Sous-évalué / La Marge de sécurité de Graham)
-            cond_cheap = (pe is not None and 0 < pe < 15)
+            # P/E doit être inférieur à 15 ET ROE doit être supérieur à 15% (0.15)
+            cond_strict_buffett = (pe is not None and 0 < pe < 15 and roe > 0.15)
             
-            # Critère 2 : P/E 15-25 MAIS ROE > 15% (Qualité/Prix / Le Moat de Munger)
-            cond_quality = (pe is not None and 15 <= pe < 25 and roe is not None and roe > 0.15)
-            
-            if cond_cheap or cond_quality:
+            if cond_strict_buffett: 
                 name = info.get('longName', ticker)
                 sector = info.get('sector', 'N/A')
                 currency = info.get('currency', 'USD')
-                tag = "Sous-évalué" if cond_cheap else "Qualité/Prix"
-                
-                print(f"✅ TROUVÉ: {ticker} - {name} ({tag}, P/E: {pe:.2f})")
-                
-                # --- CORRECTION ROE : ENREGISTRÉ EN POURCENTAGE ---
+                # Tag unique pour ce filtre très strict
+                tag = "Valeur d'Or"
+
+                print(f"💰 VALEUR D'OR TROUVÉE: {ticker} - {name} (P/E: {pe:.2f}, ROE: {roe*100:.2f}%)")
+
                 undervalued_stocks.append({
                     "symbol": ticker,
                     "name": name,
                     "sector": sector,
                     "pe": round(pe, 2),
-                    "roe": round(roe * 100, 2) if roe else 0, # ENREGISTRE LE ROE EN % AVEC 2 DÉCIMALES
-                    "price": round(price, 2),
-                    "currency": currency,
-                    "tag": tag
-                })
-        
-        except Exception:
-            continue
-            
-    # Tri par P/E croissant
-    undervalued_stocks.sort(key=lambda x: x['pe'])
-    
-    final_data = {
-        "last_updated": datetime.datetime.utcnow().strftime("%d/%m/%Y à %H:%M GMT"),
-        "count": len(undervalued_stocks),
-        "data": undervalued_stocks
-    }
-
-    with open("data.json", "w") as f:
-        json.dump(final_data, f)
-    
-    print("--- ANALSE COMPLÈTE. Résultat :", len(undervalued_stocks), "actions trouvées. ---")
-
-if __name__ == "__main__":
-    run_analysis()
+                    # On stocke le ROE en pourcentage pour l'affichage HTML
