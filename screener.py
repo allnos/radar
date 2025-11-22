@@ -4,7 +4,18 @@ import json
 import datetime
 import sys
 
-# --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS ---
+# --- FONCTION UTILITAIRE DE SÉCURITÉ ---
+def get_safe_float(info, key, reject_value):
+    """Récupère une valeur et garantit qu'elle est un float. Sinon, renvoie une valeur de rejet."""
+    val = info.get(key)
+    try:
+        # Tente de convertir en float. Si réussi, renvoie la valeur.
+        return float(val) if val is not None else reject_value
+    except (ValueError, TypeError):
+        # Si la conversion échoue (ex: valeur non-numérique), renvoie la valeur de rejet.
+        return reject_value
+
+# --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS (Inchangées) ---
 
 def get_sp500_tickers():
     """Récupère le S&P 500 (USA) et corrige le format des tickers pour yfinance."""
@@ -103,34 +114,22 @@ def run_analysis():
             except:
                 continue 
 
-            # Récupération des données fondamentales
             info = stock.info
-            pe_raw = info.get('trailingPE')
-            roe_raw = info.get('returnOnEquity') 
+            
+            # Récupération sécurisée : P/E par défaut à une valeur MAX pour s'assurer qu'il est rejeté s'il est manquant
+            pe_val = get_safe_float(info, 'trailingPE', reject_value=9999.0) 
+            # Récupération sécurisée : ROE par défaut à une valeur MIN pour s'assurer qu'il est rejeté s'il est manquant
+            roe_val = get_safe_float(info, 'returnOnEquity', reject_value=-1.0) 
 
-            # --- VÉRIFICATION DE LA DISPONIBILITÉ DES DONNÉES ---
-            if pe_raw is None or roe_raw is None:
-                continue
-
-            # --- CONVERSION EN FLOAT (Sécurité anti-bug) ---
-            try:
-                pe_val = float(pe_raw)
-                roe_val = float(roe_raw)
-            except (ValueError, TypeError):
-                continue
-
-            # --- FILTRES STRICTS ---
+            # --- FILTRES STRICTS (Valeurs garanties en float) ---
             
             # P/E doit être strictement entre 0 et 15
-            is_pe_ok = (0 < pe_val < 15)
+            is_pe_ok = (0.0 < pe_val < 15.0)
             
             # ROE doit être strictement supérieur à 0.15 (15%)
             is_roe_ok = (roe_val > 0.15)
             
-            # Ligne de DÉBOGAGE pour vérifier les valeurs dans les logs de GitHub Action
+            # Ligne de DÉBOGAGE CRITIQUE : Vérifiez vos logs GitHub Action !
             print(f"DEBUG: {ticker} - P/E: {pe_val:.2f} (OK: {is_pe_ok}), ROE: {roe_val*100:.2f}% (OK: {is_roe_ok})")
 
-            # --- ENREGISTREMENT FINAL ---
-            if is_pe_ok and is_roe_ok:
-                
-                name = info.get('longName', ticker)
+            # --- EN
