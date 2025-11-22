@@ -2,15 +2,15 @@ import yfinance as yf
 import pandas as pd
 import json
 import datetime
+import sys
 
-# --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS (Scraping Wikipedia) ---
+# --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS ---
 
 def get_sp500_tickers():
     """Récupère le S&P 500 (USA) et corrige le format des tickers pour yfinance."""
     try:
         print("Récupération S&P 500 (USA)...")
         df = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]
-        # Correction du format (ex: BRK.B -> BRK-B)
         return [t.replace('.', '-') for t in df['Symbol'].tolist()]
     except:
         return []
@@ -21,7 +21,6 @@ def get_nasdaq100_tickers():
         print("Récupération NASDAQ 100 (USA)...")
         df = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[4]
         col_name = 'Symbol' if 'Symbol' in df.columns else 'Ticker'
-        # Correction du format (ex: Ticker.A -> Ticker-A)
         return [t.replace('.', '-') for t in df[col_name].tolist()]
     except:
         return []
@@ -77,7 +76,6 @@ def get_all_global_tickers():
     all_tickers.extend(get_ftse100_tickers())
     all_tickers.extend(get_major_europe_japan_manual())
 
-    # Nettoyage final : simple suppression des doublons
     clean_tickers = list(set(all_tickers))
     return clean_tickers
 
@@ -103,40 +101,36 @@ def run_analysis():
             try:
                 price = stock.fast_info.last_price
             except:
-                continue # Skip si le prix n'est pas disponible
+                continue 
 
             # Récupération des données fondamentales
             info = stock.info
-            pe = info.get('trailingPE')
-            # Ne pas utiliser de valeur par défaut ici, car 'None' est plus clair que 0 pour le filtre
-            roe = info.get('returnOnEquity') 
+            pe_raw = info.get('trailingPE')
+            roe_raw = info.get('returnOnEquity') 
 
-            # --- FILTRE STRICT : P/E < 15 ---
+            # --- VÉRIFICATION DE LA DISPONIBILITÉ DES DONNÉES ---
+            if pe_raw is None or roe_raw is None:
+                continue
+
+            # --- CONVERSION EN FLOAT (Sécurité anti-bug) ---
+            try:
+                pe_val = float(pe_raw)
+                roe_val = float(roe_raw)
+            except (ValueError, TypeError):
+                continue
+
+            # --- FILTRES STRICTS ---
             
-            # Étape 1 : Vérification stricte du P/E (Prix)
-            # Doit être disponible, strictement positif, et STRICTEMENT inférieur à 15.
-            if pe is None or pe <= 0 or pe >= 15:
-                continue # P/E non conforme, on passe au suivant.
+            # P/E doit être strictement entre 0 et 15
+            is_pe_ok = (0 < pe_val < 15)
+            
+            # ROE doit être strictement supérieur à 0.15 (15%)
+            is_roe_ok = (roe_val > 0.15)
+            
+            # Ligne de DÉBOGAGE pour vérifier les valeurs dans les logs de GitHub Action
+            print(f"DEBUG: {ticker} - P/E: {pe_val:.2f} (OK: {is_pe_ok}), ROE: {roe_val*100:.2f}% (OK: {is_roe_ok})")
+
+            # --- ENREGISTREMENT FINAL ---
+            if is_pe_ok and is_roe_ok:
                 
-            # --- FILTRE STRICT : ROE > 15% ---
-
-            # Étape 2 : Vérification stricte du ROE (Qualité)
-            # Doit être disponible (non None) et STRICTEMENT supérieur à 0.15 (15%).
-            if roe is None or roe <= 0.15:
-                continue # ROE non conforme, on passe au suivant.
-
-            # --- Si le code atteint ce point, les deux conditions sont remplies ---
-            
-            name = info.get('longName', ticker)
-            sector = info.get('sector', 'N/A')
-            currency = info.get('currency', 'USD')
-            tag = "Valeur d'Or"
-
-            print(f"💰 VALEUR D'OR TROUVÉE: {ticker} - {name} (P/E: {pe:.2f}, ROE: {roe*100:.2f}%)")
-
-            undervalued_stocks.append({
-                "symbol": ticker,
-                "name": name,
-                "sector": sector,
-                "pe": round(pe, 2),
-                # Conversion du ROE en
+                name = info.get('longName', ticker)
