@@ -13,21 +13,64 @@ EXCLUDED_SECTORS = [
     'Capital Goods', 'Industrials' 
 ]
 
+# --- FONCTIONS UTILITAIRES DE SÉCURITÉ ---
 
-# --- FONCTION UTILITAIRE DE SÉCURITÉ ---
 def get_safe_float(info, key, reject_value):
     """Récupère une valeur et garantit qu'elle est un float. Sinon, renvoie une valeur de rejet."""
     val = info.get(key)
     try:
-        # Tente de convertir en float. Si réussi, renvoie la valeur.
         return float(val) if val is not None else reject_value
     except (ValueError, TypeError):
-        # Si la conversion échoue (ex: valeur non-numérique), renvoie la valeur de rejet.
         return reject_value
 
+def calculate_roe(stock):
+    """Calcule le Return on Equity (ROE) à partir du bilan et du compte de résultat."""
+    try:
+        # Bénéfice Net (Net Income) - Le plus récent de l'année
+        net_income = stock.financials.loc['Net Income'].iloc[0]
+        
+        # Capitaux Propres (Total Stockholder Equity) - Le plus récent du bilan
+        total_equity = stock.balance_sheet.loc['Total Stockholder Equity'].iloc[0]
+        
+        if total_equity > 0:
+            return net_income / total_equity
+        return -1.0 # Rejet si l'équité est négative ou nulle
+    except Exception:
+        return -1.0
+
+def calculate_gpm(stock):
+    """Calcule la Marge Brute (Gross Profit Margin) à partir du compte de résultat."""
+    try:
+        # Bénéfice Brut (Gross Profit) - Le plus récent
+        gross_profit = stock.financials.loc['Gross Profit'].iloc[0]
+        
+        # Revenus (Total Revenue) - Le plus récent
+        total_revenue = stock.financials.loc['Total Revenue'].iloc[0]
+        
+        if total_revenue > 0:
+            return gross_profit / total_revenue
+        return -1.0
+    except Exception:
+        return -1.0
+
+def calculate_de_ratio(stock):
+    """Calcule le Ratio Dette/Capitaux Propres (Debt-to-Equity) à partir du bilan."""
+    try:
+        # Dette Totale (Total Debt)
+        total_debt = stock.balance_sheet.loc['Total Debt'].iloc[0]
+        
+        # Capitaux Propres (Total Stockholder Equity)
+        total_equity = stock.balance_sheet.loc['Total Stockholder Equity'].iloc[0]
+        
+        if total_equity > 0:
+            return total_debt / total_equity
+        return 9999.0 # Rejet si l'équité est négative ou nulle
+    except Exception:
+        return 9999.0
+
 # --- 1. FONCTIONS DE RÉCUPÉRATION DYNAMIQUE DES TICKERS (Inchangées) ---
-# (Ces fonctions restent inchangées et ne sont pas répétées ici pour la clarté, 
-# mais elles doivent être présentes dans votre fichier final)
+# ... (Les fonctions get_sp500_tickers, get_nasdaq100_tickers, etc., doivent être ici) ...
+# Nous omettons leur code ici pour la clarté, mais elles doivent être dans votre fichier.
 
 def get_sp500_tickers():
     """Récupère le S&P 500 (USA) et corrige le format des tickers pour yfinance."""
@@ -106,7 +149,7 @@ def get_all_global_tickers():
 # --- 2. ANALYSE PRINCIPALE (4 Critères Fondamentaux) ---
 
 def run_analysis():
-    print("--- Démarrage du Screener Buffet (4 Critères Fondamentaux + Exclusion de Secteur) ---")
+    print("--- Démarrage du Screener Buffett (Mode Robuste : Balance Sheet + Financials) ---")
     tickers = get_all_global_tickers()
     
     limit_scan = 1500
@@ -114,6 +157,9 @@ def run_analysis():
     
     undervalued_stocks = []
     print(f"Total actions à scanner : {len(tickers_to_scan)}")
+    
+    # Préchauffage du cache pandas pour éviter les avertissements futurs
+    pd.options.mode.chained_assignment = None 
 
     for i, ticker in enumerate(tickers_to_scan):
         if i % 100 == 0:
@@ -132,23 +178,17 @@ def run_analysis():
             # 1. Vérification du Secteur (Critère Qualitatif de Simplicité)
             sector = info.get('sector', 'N/A')
             if sector in EXCLUDED_SECTORS:
-                # print(f"DEBUG: {ticker} - Secteur {sector} exclu.")
                 continue
 
-            # 2. Récupération des Ratios (Sécurisée)
+            # 2. Récupération/Calcul des Ratios (ROBUSTES)
+            
+            # P/E est généralement bien renseigné dans info
             pe_val = get_safe_float(info, 'trailingPE', reject_value=9999.0)
-            roe_val = get_safe_float(info, 'returnOnEquity', reject_value=-1.0)
-            gpm_val = get_safe_float(info, 'grossMargins', reject_value=-1.0)
             
-            # Ratio Dette/Capitaux Propres (D/E)
-            total_debt = get_safe_float(info, 'totalDebt', reject_value=0.0)
-            total_equity = get_safe_float(info, 'totalStockholderEquity', reject_value=-1.0)
-            
-            if total_equity > 0:
-                de_val = total_debt / total_equity
-            else:
-                # Si capitaux propres négatifs ou nuls, le ratio échoue
-                de_val = 9999.0 
+            # ROE, GPM et D/E sont calculés à partir des états financiers (plus fiable)
+            roe_val = calculate_roe(stock)
+            gpm_val = calculate_gpm(stock)
+            de_val = calculate_de_ratio(stock)
 
             # --- APPLICATION DES FILTRES BUFFETT ---
             
@@ -158,14 +198,14 @@ def run_analysis():
             # F2: ROE > 15% (Qualité)
             is_roe_ok = (roe_val > 0.15)
             
-            # F3: Marge Brute (GPM) > 20% (Pouvoir de Fixation des Prix / Moat)
+            # F3: Marge Brute (GPM) > 20% (Moat)
             is_gpm_ok = (gpm_val > 0.20)
             
-            # F4: Dette/Capitaux Propres (D/E) < 1.0 (Sécurité / Dette gérable)
+            # F4: Dette/Capitaux Propres (D/E) < 1.0 (Sécurité)
             is_de_ok = (de_val < 1.0)
             
-            # Ligne de DÉBOGAGE CRITIQUE : Vérifiez vos logs GitHub Action !
-            # print(f"DEBUG: {ticker} - P/E:{is_pe_ok}, ROE:{is_roe_ok}, GPM:{is_gpm_ok}, D/E:{is_de_ok}")
+            # Ligne de DÉBOGAGE (optionnel mais utile)
+            # print(f"DEBUG: {ticker} - P/E:{is_pe_ok} ({pe_val:.2f}), ROE:{is_roe_ok} ({roe_val*100:.2f}%), GPM:{is_gpm_ok} ({gpm_val*100:.2f}%), D/E:{is_de_ok} ({de_val:.2f})")
 
             # --- ENREGISTREMENT FINAL ---
             if is_pe_ok and is_roe_ok and is_gpm_ok and is_de_ok:
@@ -190,7 +230,7 @@ def run_analysis():
                 })
         
         except Exception as e:
-            # print(f"Erreur pour {ticker}: {e}")
+            # print(f"Erreur robuste pour {ticker}: {e}")
             continue
             
     # Tri par P/E croissant
