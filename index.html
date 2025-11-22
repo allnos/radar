@@ -20,9 +20,9 @@
         /* Couleur pour le nouveau Tag Strict */
         .tag-valeur-dor { background-color: #f1c40f; color: #2c3e50; font-weight: bold; } /* Jaune/Or */
         
-        /* Couleurs pour le ROE */
-        .roe-good { background-color: #27ae60; } 
-        .roe-na { background-color: #95a5a6; } 
+        /* Couleurs pour les indicateurs (tous en vert car ils sont bons par définition du filtre) */
+        .indicator-good { background-color: #27ae60; } 
+        .indicator-na { background-color: #95a5a6; } 
     </style>
 </head>
 <body>
@@ -63,21 +63,24 @@
 
             jsonData.data.forEach(stock => {
                 
-                // 1. GESTION DU TAG
-                const tagClass = "tag-valeur-dor"; // Maintenant, il n'y a qu'un seul tag
-                const peColor = '#27ae60'; // Vert, car le P/E est nécessairement bas
+                // 1. GESTION DU TAG (Tag unique)
+                const tagClass = "tag-valeur-dor"; 
+                
+                // 2. GESTION DES INDICATEURS (P/E et ROE sont nécessairement bons ici)
+                
+                // P/E est bon par définition
+                const peColor = 'indicator-good'; 
 
-                // 2. GESTION DU ROE (Élimination du "Undefined%")
+                // ROE est bon par définition (>15%), mais nous gardons la protection "Undefined%"
                 let roeValue;
                 let roeColor;
                 
-                // Le Python garantit ROE > 15% ici, mais nous protégeons l'affichage
                 if (stock.roe === undefined || stock.roe === null || stock.roe <= 0) {
                     roeValue = 'N/A';
-                    roeColor = '#95a5a6'; 
+                    roeColor = 'indicator-na'; 
                 } else {
                     roeValue = stock.roe.toFixed(2) + '%';
-                    roeColor = '#27ae60'; // Vert, car il est nécessairement > 15%
+                    roeColor = 'indicator-good';
                 }
 
 
@@ -89,8 +92,8 @@
                     </td>
                     <td>${stock.name}</td>
                     <td>${stock.sector}</td>
-                    <td><span class="pe-tag" style="background-color:${peColor}">${stock.pe}</span></td>
-                    <td><span class="roe-tag" style="background-color:${roeColor}">${roeValue}</span></td>
+                    <td><span class="pe-tag ${peColor}">${stock.pe}</span></td>
+                    <td><span class="roe-tag ${roeColor}">${roeValue}</span></td>
                     <td>${stock.price} ${stock.currency}</td>
                 </tr>`;
                 tbody.innerHTML += row;
