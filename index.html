@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ALLNOS Radar : les valeur d'or à l'achat</title>
+    <title>ALLNOS Radar : Valeurs d'Or Buffett</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
         h1 { color: #2c3e50; text-align: center; margin-bottom: 5px; }
         .update-time { text-align: center; color: #7f8c8d; font-size: 0.9em; margin-bottom: 25px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
@@ -14,13 +14,25 @@
         td { padding: 14px; border-bottom: 1px solid #eee; }
         tr:nth-child(even) { background-color: #f9f9f9; }
         tr:hover { background-color: #e8f4f8; }
-        .pe-tag, .roe-tag { padding: 4px 8px; border-radius: 4px; font-weight: bold; color: white; font-size: 0.9em; display: inline-block; }
+
+        /* Classe générale pour les tags de ratios */
+        .ratio-tag { 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            font-weight: bold; 
+            color: white; 
+            font-size: 0.9em; 
+            display: inline-block; 
+            text-align: center; 
+            min-width: 60px;
+        }
+
         .tag-value { font-size: 0.8em; padding: 2px 6px; border-radius: 3px; margin-top: 4px; display: inline-block; }
 
-        /* Couleur pour le nouveau Tag Strict */
+        /* Couleur pour le Tag Strict */
         .tag-valeur-dor { background-color: #f1c40f; color: #2c3e50; font-weight: bold; } /* Jaune/Or */
         
-        /* Couleurs pour les indicateurs (tous en vert car ils sont bons par définition du filtre) */
+        /* Couleurs pour les indicateurs (Vert = OK, Gris = N/A ou Marge de sécurité non garantie) */
         .indicator-good { background-color: #27ae60; } 
         .indicator-na { background-color: #95a5a6; } 
     </style>
@@ -28,7 +40,7 @@
 <body>
 
 <div class="container">
-    <h1>🏆 ALLNOS Radar : les valeur d'or à l'achat</h1>
+    <h1>🏆 ALLNOS Radar : les Valeurs d'Or à l'achat</h1>
     <p class="update-time" id="lastUpdate">Chargement des données...</p>
 
     <table id="stockTable">
@@ -37,8 +49,10 @@
                 <th>Symbole / Type</th>
                 <th>Société</th>
                 <th>Secteur</th>
-                <th>P/E Ratio</th>
-                <th>ROE</th>
+                <th>P/E Ratio (< 15)</th>
+                <th>ROE (> 15%)</th>
+                <th>Marge Brute (GPM) (> 20%)</th>
+                <th>Dette/Capitaux Propres (D/E) (< 1.0)</th>
                 <th>Prix</th>
             </tr>
         </thead>
@@ -52,36 +66,43 @@
     fetch('data.json')
         .then(response => response.json())
         .then(jsonData => {
-            document.getElementById('lastUpdate').textContent = `Dernière mise à jour : ${jsonData.last_updated} | ${jsonData.count} actions trouvées.`;
+            // Utilisation de jsonData.data.length car 'count' peut être non mis à jour
+            document.getElementById('lastUpdate').textContent = `Dernière mise à jour : ${jsonData.last_updated} | ${jsonData.data.length} actions trouvées.`;
             
             const tbody = document.getElementById('tableBody');
             
             if(jsonData.data.length === 0) {
-                tbody.innerHTML = "<tr><td colspan='6' style='text-align:center; padding: 30px;'>Aucune 'Valeur d'Or' trouvée aujourd'hui selon le critère P/E < 15 ET ROE > 15%.</td></tr>";
+                tbody.innerHTML = "<tr><td colspan='8' style='text-align:center; padding: 30px;'>Aucune 'Valeur d'Or' trouvée aujourd'hui selon les 4 critères stricts de Buffett.</td></tr>";
                 return;
             }
 
             jsonData.data.forEach(stock => {
                 
-                // 1. GESTION DU TAG (Tag unique)
-                const tagClass = "tag-valeur-dor"; 
+                // --- GESTION DU TAG ---
+                const tagClass = "tag-valeur-dor";
                 
-                // 2. GESTION DES INDICATEURS (P/E et ROE sont nécessairement bons ici)
+                // --- GESTION DES INDICATEURS ET RATION ---
                 
-                // P/E est bon par définition
+                // 1. P/E (Prix) : < 15.0
+                const peValue = stock.pe !== undefined && stock.pe !== null ? stock.pe.toFixed(2) : 'N/A';
+                // Par définition du filtre Python, il est OK
                 const peColor = 'indicator-good'; 
 
-                // ROE est bon par définition (>15%), mais nous gardons la protection "Undefined%"
-                let roeValue;
-                let roeColor;
+                // 2. ROE (Qualité) : > 15.0%
+                const roeValue = stock.roe !== undefined && stock.roe !== null ? stock.roe.toFixed(2) + '%' : 'N/A';
+                const roeColor = 'indicator-good';
+
+                // 3. Marge Brute (GPM) : > 20.0%
+                const gpmValue = stock.gpm !== undefined && stock.gpm !== null ? stock.gpm.toFixed(2) + '%' : 'N/A';
+                const gpmColor = 'indicator-good';
+
+                // 4. Dette/Capitaux Propres (D/E Ratio) : < 1.0
+                const deValue = stock.de_ratio !== undefined && stock.de_ratio !== null ? stock.de_ratio.toFixed(2) : 'N/A';
+                // Le script Python filtre stricto sensu, mais on garde la logique de couleur OK
+                const deColor = 'indicator-good';
                 
-                if (stock.roe === undefined || stock.roe === null || stock.roe <= 0) {
-                    roeValue = 'N/A';
-                    roeColor = 'indicator-na'; 
-                } else {
-                    roeValue = stock.roe.toFixed(2) + '%';
-                    roeColor = 'indicator-good';
-                }
+                // Affichage du prix
+                const priceDisplay = stock.price !== undefined && stock.price !== null ? `${stock.price.toFixed(2)} ${stock.currency}` : 'N/A';
 
 
                 const row = `<tr>
@@ -92,15 +113,17 @@
                     </td>
                     <td>${stock.name}</td>
                     <td>${stock.sector}</td>
-                    <td><span class="pe-tag ${peColor}">${stock.pe}</span></td>
-                    <td><span class="roe-tag ${roeColor}">${roeValue}</span></td>
-                    <td>${stock.price} ${stock.currency}</td>
+                    <td><span class="ratio-tag ${peColor}">${peValue}</span></td>
+                    <td><span class="ratio-tag ${roeColor}">${roeValue}</span></td>
+                    <td><span class="ratio-tag ${gpmColor}">${gpmValue}</span></td>
+                    <td><span class="ratio-tag ${deColor}">${deValue}</span></td>
+                    <td>${priceDisplay}</td>
                 </tr>`;
                 tbody.innerHTML += row;
             });
         })
         .catch(error => {
-            document.getElementById('lastUpdate').textContent = "Erreur de chargement ou en attente de la première mise à jour.";
+            document.getElementById('lastUpdate').textContent = "Erreur de chargement des données. Veuillez vérifier le fichier data.json.";
             console.error('Erreur:', error);
         });
 </script>
