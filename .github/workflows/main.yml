@@ -2,39 +2,40 @@ name: Update Stock Data
 
 on:
   schedule:
-    # Cette ligne signifie : "À 00h00 UTC tous les jours"
+    # Se lance tous les jours à minuit
     - cron: '0 0 * * *'
-  workflow_dispatch: # Permet de lancer le robot manuellement (bouton)
-
-permissions:
-  contents: write
+  workflow_dispatch: # Permet le lancement manuel
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # On laisse 30 min au script car le scan mondial est long
 
     steps:
-    - name: Récupération du code
+    - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Installation de Python
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    - name: Installation des outils (yfinance)
+    - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Lancement de l'analyse (screener.py)
+    - name: Run Global Buffett Screener
       run: |
-        python screener.py
+        # ATTENTION : Vérifiez ici que le nom correspond EXACTEMENT à votre fichier Python
+        # Si votre fichier s'appelle screener.py, laissez screener.py
+        # Si votre fichier s'appelle global_buffett_screener.py, changez la ligne ci-dessous
+        python global_buffett_screener.py
 
-    - name: Sauvegarde des résultats
+    - name: Commit and Push results
       run: |
         git config --global user.name 'GitHub Action'
         git config --global user.email 'action@github.com'
         git add data.json
-        # On ne commite que s'il y a du changement
-        git commit -m "Mise à jour quotidienne auto" || exit 0
+        git commit -m "Mise à jour des Valeurs d'Or Buffett" || exit 0
         git push
