@@ -1,0 +1,38 @@
+name: Scan M-N (Midi)
+
+on:
+  schedule:
+    - cron: '0 12 * * *' # Tous les jours à 12h00 (Midi UTC/GMT)
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install yfinance pandas lxml html5lib requests beautifulsoup4
+
+    - name: Run Screener for M-N
+      run: |
+        # Lancement avec l'argument 'M-N'
+        python screener.py "M-N"
+
+    - name: Commit and Push
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        git add data.json
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update stock data (Segment M-N)" && git push origin HEAD:main)
