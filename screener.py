@@ -9,12 +9,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 # --- FILTRES ET CRITÈRES BUFFETT ---
 
+# Secteurs exclus (Qualitatif)
 EXCLUDED_SECTORS = [
     'Technology', 'Biotechnology', 'Basic Materials', 'Energy', 
     'Oil & Gas', 'Mining', 'Semiconductors', 'Aerospace & Defense', 
     'Capital Goods', 'Industrials', 'Real Estate', 'Telecommunication Services' 
 ]
 
+# Secteurs exemptés du critère strict de Dette (Banques, Utilities)
 EXEMPTED_DEBT_SECTORS = ['Financial Services', 'Utilities']
 
 # --- 1. FONCTIONS DE CALCUL ET DE SÉCURITÉ ---
@@ -102,58 +104,4 @@ def get_all_global_tickers():
     tickers.extend(get_tickers_from_wiki('https://en.wikipedia.org/wiki/FTSE_100_Index', 4, ['Ticker'], ".L"))
     
     # Liste Manuelle / Autres
-    manual_list = ["7203.T", "6758.T", "9984.T", "NESN.SW", "NOVN.SW", "ROG.SW", "RY.TO", "TD.TO", "ENB.TO", "BHP.AX", "CBA.AX", "0700.HK", "9988.HK", "AAPL", "MSFT", "TTE.PA"]
-    tickers.extend(manual_list)
-    
-    unique_tickers = list(set(tickers))
-    print(f"--- Total Tickers uniques trouvés : {len(unique_tickers)} ---")
-    return unique_tickers
-
-# --- 3. ANALYSE ET SEGMENTATION ---
-
-def process_ticker(ticker):
-    # ... (fonction de processus inchangée) ...
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        if not info: return None
-
-        price = get_safe_float(info, 'currentPrice', 0.0)
-        if price <= 0: price = get_safe_float(info, 'regularMarketPrice', 0.0)
-        if price <= 0: return None
-
-        sector = info.get('sector', 'N/A')
-        if sector in EXCLUDED_SECTORS: return None
-
-        pe = get_safe_float(info, 'trailingPE', 9999.0)
-        roe = calculate_roe(stock)
-        gpm = calculate_gpm(stock)
-        de = calculate_de_ratio(stock)
-
-        ok_pe = (0 < pe < 25) # NOUVEAU CRITÈRE P/E < 25 pour obtenir des résultats
-        ok_roe = (roe > 0.15)
-        ok_gpm = (gpm > 0.20)
-        ok_de = (de < 1.0) or (sector in EXEMPTED_DEBT_SECTORS)
-
-        if ok_pe and ok_roe and ok_gpm and ok_de:
-            name = info.get('longName', ticker)
-            currency = info.get('currency', 'USD')
-            tag = "Valeur d'Or"
-            if sector in EXEMPTED_DEBT_SECTORS: tag += f" (Dette: {sector})"
-            
-            return {
-                "symbol": ticker, "name": name, "sector": sector,
-                "pe": round(pe, 2), "roe": round(roe*100, 2),
-                "gpm": round(gpm*100, 2), "de_ratio": round(de, 2),
-                "price": round(price, 2), "currency": currency, "tag": tag
-            }
-    except:
-        return None
-
-def run():
-    try:
-        # 1. Récupération des Tickers
-        tickers = get_all_global_tickers()
-        
-        # 2. Récupération et Filtrage par Segment
-        if len(sys.argv) >
+    manual_list = ["7203.T", "6758.T", "9984.T", "NESN.SW", "NOVN.SW", "ROG.SW", "RY.TO", "TD.TO", "ENB.TO", "BHP.
