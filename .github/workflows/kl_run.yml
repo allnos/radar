@@ -1,0 +1,38 @@
+name: Scan K-L (10h du Matin)
+
+on:
+  schedule:
+    - cron: '0 10 * * *' # Tous les jours à 10h00 (UTC/GMT)
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install yfinance pandas lxml html5lib requests beautifulsoup4
+
+    - name: Run Screener for K-L
+      run: |
+        # Lancement avec l'argument 'K-L'
+        python screener.py "K-L"
+
+    - name: Commit and Push
+      run: |
+        git config --global user.name 'GitHub Action'
+        git config --global user.email 'action@github.com'
+        git add data.json
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update stock data (Segment K-L)" && git push origin HEAD:main)
